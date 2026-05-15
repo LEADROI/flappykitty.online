@@ -31,6 +31,13 @@ npx serve .
 python3 -m http.server 8000
 ```
 
+## Deploy to Netlify
+
+1. Push to GitHub
+2. Import repo in [Netlify](https://netlify.com)
+3. Default settings work (no build command needed) — publish directory is root
+4. Done!
+
 ## Deploy to Vercel
 
 1. Push to GitHub
@@ -50,19 +57,18 @@ python3 -m http.server 8000
 ```
 flappy-kitty/
 ├── index.html          # Entry point
-├── src/
-│   ├── main.js         # Init + responsive scaling
-│   ├── game.js         # Game loop + scene management
-│   ├── mia.js          # Mia sprite + physics
-│   ├── obstacles.js    # Obstacle spawning + collision
-│   ├── background.js   # Parallax background layers
-│   ├── particles.js    # Heart particle system
-│   ├── ui.js           # Menu, HUD, game-over screens
-│   ├── audio.js        # Procedural sound (Web Audio API)
-│   ├── input.js        # Unified input handler
-│   ├── i18n.js         # RU/EN localization
-│   ├── storage.js      # localStorage wrapper
-│   └── config.js       # All tunable constants
+├── main.js             # Init + responsive scaling
+├── game.js             # Game loop + scene management
+├── mia.js              # Mia sprite + physics
+├── obstacles.js        # Obstacle spawning + collision
+├── background.js       # Parallax background layers
+├── particles.js        # Heart particle system
+├── ui.js               # Menu, HUD, game-over screens
+├── audio.js            # Procedural sound (Web Audio API)
+├── input.js            # Unified input handler
+├── i18n.js             # RU/EN localization
+├── storage.js          # localStorage wrapper
+├── config.js           # All tunable constants
 └── README.md
 ```
 
