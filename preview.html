@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3A1C5E">
+  <title>Flappy Kitty 💛</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&family=Pacifico&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body {
+      width:100%; height:100%; overflow:hidden; background:#3A1C5E;
+      display:flex; align-items:center; justify-content:center;
+      font-family:'Nunito',sans-serif;
+      -webkit-tap-highlight-color:transparent; touch-action:none; user-select:none;
+      -webkit-user-select:none;
+    }
+    canvas {
+      display:block; image-rendering:pixelated; image-rendering:crisp-edges;
+      border-radius:4px; box-shadow:0 0 40px rgba(245,176,65,0.15);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <script>
+// config.js — All tunable constants
+const CONFIG = {
+  // Logical canvas size
+  CANVAS_W: 400,
+  CANVAS_H: 600,
+
+  // Physics
+  GRAVITY: 0.45,
+  FLAP_FORCE: -7.5,
+  MAX_FALL_SPEED: 10,
+  MIA_ROTATION_UP: -25, // degrees on flap
+  MIA_ROTATION_DOWN: 70, // degrees max falling
+
+  // Mia
+  MIA_X: 80,
+  MIA_W: 40,
+  MIA_H: 40,
+  MIA_HITBOX_RADIUS: 15, // forgiving
+
+  // Obstacles
+  OBSTACLE_W: 52,
+  OBSTACLE_GAP: 135,
+  OBSTACLE_GAP_MIN: 92,
+  OBSTACLE_GAP_SHRINK: 3, // per 10 pts
+  OBSTACLE_SPACING: 220,
+  OBSTACLE_SPEED: 2.2,
+  OBSTACLE_SPEED_INC: 0.15, // per 10 pts
+  OBSTACLE_SPEED_MAX: 4.0,
+  OBSTACLE_MIN_TOP: 60,
+  OBSTACLE_MAX_TOP: 360,
+
+  // Background parallax speeds (multiplier of obstacle speed)
+  BG_LAYER0_SPEED: 0,
+  BG_LAYER1_SPEED: 0.3,
+  BG_LAYER2_SPEED: 0.6,
+
+  // Colors
+  COLOR_SKY_TOP: '#FF7E5F',
+  COLOR_SKY_BOTTOM: '#7EC8E3',
+  COLOR_PLUM: '#3A1C5E',
+  COLOR_AMBER: '#F5B041',
+  COLOR_PINK: '#F1948A',
+  COLOR_CREAM: '#FFF8F0',
+  COLOR_LAVENDER: '#D7BDE2',
+  COLOR_ROSE: '#E74C6F',
+  COLOR_WHITE: '#FFFFFF',
+
+  // Scoring
+  MILESTONE_5: 5,
+  MILESTONE_10: 10,
+  MILESTONE_25: 25,
+  MILESTONE_50: 50,
+
+  // Input debounce
+  INPUT_DEBOUNCE_MS: 80,
+
+  // Particles
+  MAX_PARTICLES: 12,
+
+  // Animation
+  SCREEN_FADE_MS: 300,
+  SCORE_POP_MS: 150,
+};
+// i18n.js — Localization
+const STRINGS = {
+  ru: {
+    title: 'Flappy Kitty',
+    btn_start: 'Начать',
+    btn_pause: 'Пауза',
+    btn_resume: 'Продолжить',
+    btn_retry: 'Ещё раз',
+    btn_home: 'Домой',
+    btn_sound_on: 'Звук вкл',
+    btn_sound_off: 'Звук выкл',
+    tip_control: 'Нажимай, чтобы Мия летела!',
+    tip_goal: 'Проведи Мию через арки 💛',
+    game_over: 'Игра окончена',
+    new_record: 'Новый рекорд! 🏆',
+    score_label: 'Счёт',
+    best_label: 'Лучший',
+    tap_to_start: 'Нажми, чтобы начать',
+    msg_nastya: [
+      'Настя, Мия верит в тебя! 💛',
+      'Ты лучше всех, Настюш 🌸',
+      'Мия летит к тебе с любовью ✨',
+      'Каждый полёт — для тебя 🌙',
+      'Ты — её любимый человек 💕',
+    ],
+    milestone_5: 'Отличное начало!',
+    milestone_10: 'Мия тебя любит!',
+    milestone_25: 'Ты невероятная, Настя!',
+    milestone_50: 'Вау, Настя! 💛',
+  },
+  en: {
+    title: 'Flappy Kitty',
+    btn_start: 'Start',
+    btn_pause: 'Pause',
+    btn_resume: 'Resume',
+    btn_retry: 'Retry',
+    btn_home: 'Home',
+    btn_sound_on: 'Sound On',
+    btn_sound_off: 'Sound Off',
+    tip_control: 'Tap to make Mia fly!',
+    tip_goal: 'Guide Mia through the arches 💛',
+    game_over: 'Game Over',
+    new_record: 'New Record! 🏆',
+    score_label: 'Score',
+    best_label: 'Best',
+    tap_to_start: 'Tap to start',
+    msg_nastya: [
+      'Nastya, Mia believes in you! 💛',
+      "You're the best, Nastya 🌸",
+      'Mia flies to you with love ✨',
+      'Every flight is for you 🌙',
+      "You're her favorite person 💕",
+    ],
+    milestone_5: 'Great start!',
+    milestone_10: 'Mia loves you!',
+    milestone_25: "You're amazing, Nastya!",
+    milestone_50: 'Wow, Nastya! 💛',
+  },
+};
+
+let currentLang = 'ru';
+
+function setLang(lang) {
+  currentLang = lang;
+}
+
+function getLang() {
+  return currentLang;
+}
+
+function t(key) {
+  return STRINGS[currentLang][key] || STRINGS['en'][key] || key;
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'ru' ? 'en' : 'ru';
+  return currentLang;
+}
+// storage.js — localStorage wrapper
+const PREFIX = 'fk_';
+
+function saveBest(score) {
+  try {
+    localStorage.setItem(PREFIX + 'best', String(score));
+  } catch (e) {}
+}
+
+function loadBest() {
+  try {
+    return parseInt(localStorage.getItem(PREFIX + 'best')) || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function saveLang(lang) {
+  try {
+    localStorage.setItem(PREFIX + 'lang', lang);
+  } catch (e) {}
+}
+
+function loadLang() {
+  try {
+    return localStorage.getItem(PREFIX + 'lang') || 'ru';
+  } catch (e) {
+    return 'ru';
+  }
+}
+
+function saveSound(on) {
+  try {
+    localStorage.setItem(PREFIX + 'sound', on ? '1' : '0');
+  } catch (e) {}
+}
+
+function loadSound() {
+  try {
+    const v = localStorage.getItem(PREFIX + 'sound');
+    return v === null ? true : v === '1';
+  } catch (e) {
+    return true;
+  }
+}
+// audio.js — Audio manager (generates all sounds programmatically)
+let audioCtx = null;
+let soundEnabled = true;
+let bgmPlaying = false;
+let bgmOsc = null;
+let bgmGain = null;
+
+function ensureCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function setSoundEnabled(on) {
+  soundEnabled = on;
+  if (!on) stopBGM();
+}
+
+function isSoundEnabled() {
+  return soundEnabled;
+}
+
+function playTone(freq, duration, type = 'sine', vol = 0.15) {
+  if (!soundEnabled) return;
+  const ctx = ensureCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+}
+
+function playFlap() {
+  playTone(580, 0.08, 'sine', 0.12);
+  setTimeout(() => playTone(720, 0.06, 'sine', 0.08), 30);
+}
+
+function playScore() {
+  playTone(880, 0.1, 'sine', 0.15);
+  setTimeout(() => playTone(1100, 0.12, 'sine', 0.12), 60);
+}
+
+function playHit() {
+  playTone(180, 0.25, 'sawtooth', 0.12);
+  playTone(120, 0.3, 'square', 0.06);
+}
+
+function playRecord() {
+  const notes = [660, 880, 1100, 1320];
+  notes.forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.2, 'sine', 0.12), i * 100);
+  });
+}
+
+function playMilestone() {
+  playTone(700, 0.15, 'sine', 0.1);
+  setTimeout(() => playTone(900, 0.15, 'sine', 0.1), 80);
+  setTimeout(() => playTone(1100, 0.2, 'sine', 0.12), 160);
+}
+
+// Simple ambient BGM — soft arpeggiated tones
+let bgmInterval = null;
+
+function startBGM() {
+  if (!soundEnabled || bgmPlaying) return;
+  bgmPlaying = true;
+  const notes = [330, 392, 440, 494, 523, 494, 440, 392];
+  let idx = 0;
+  bgmInterval = setInterval(() => {
+    if (!soundEnabled) { stopBGM(); return; }
+    playTone(notes[idx % notes.length], 0.35, 'sine', 0.04);
+    playTone(notes[idx % notes.length] / 2, 0.4, 'triangle', 0.025);
+    idx++;
+  }, 450);
+}
+
+function stopBGM() {
+  bgmPlaying = false;
+  if (bgmInterval) {
+    clearInterval(bgmInterval);
+    bgmInterval = null;
+  }
+}
+
+function initAudio() {
+  // Will be initialized on first user gesture
+}
+// particles.js — Lightweight heart particle system
+const particles = [];
+
+function spawnHearts(x, y, count = 6) {
+  for (let i = 0; i < count && particles.length < CONFIG.MAX_PARTICLES; i++) {
+    particles.push({
+      x: x + (Math.random() - 0.5) * 30,
+      y: y + (Math.random() - 0.5) * 20,
+      vx: (Math.random() - 0.5) * 2,
+      vy: -(Math.random() * 2 + 1),
+      size: 8 + Math.random() * 8,
+      alpha: 1,
+      rotation: Math.random() * Math.PI * 2,
+      color: Math.random() > 0.5 ? CONFIG.COLOR_PINK : CONFIG.COLOR_AMBER,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy -= 0.01; // float up
+    p.alpha -= 0.015;
+    p.rotation += 0.03;
+    if (p.alpha <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+function drawParticles(ctx) {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    drawHeart(ctx, 0, 0, p.size, p.color);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHeart(ctx, x, y, size, color) {
+  const s = size / 2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y - s * 0.5, x - s, y - s * 0.5, x - s, y + s * 0.1);
+  ctx.bezierCurveTo(x - s, y + s * 0.6, x, y + s, x, y + s);
+  ctx.bezierCurveTo(x, y + s, x + s, y + s * 0.6, x + s, y + s * 0.1);
+  ctx.bezierCurveTo(x + s, y - s * 0.5, x, y - s * 0.5, x, y + s * 0.3);
+  ctx.fill();
+}
+
+function clearParticles() {
+  particles.length = 0;
+}
+// background.js — Parallax background renderer (all procedural, pixel-art style)
+let skyGradient = null;
+let stars = [];
+let cityBuildings = [];
+let cloudShapes = [];
+let groundOffset = 0;
+let cloudOffset = 0;
+let cityOffset = 0;
+
+function initBackground(ctx) {
+  // Pre-generate sky gradient
+  skyGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_H);
+  skyGradient.addColorStop(0, '#FF7E5F');
+  skyGradient.addColorStop(0.35, '#FEB47B');
+  skyGradient.addColorStop(0.65, '#C9B8E8');
+  skyGradient.addColorStop(1, '#7EC8E3');
+
+  // Generate stars
+  stars = [];
+  for (let i = 0; i < 40; i++) {
+    stars.push({
+      x: Math.random() * CONFIG.CANVAS_W,
+      y: Math.random() * CONFIG.CANVAS_H * 0.45,
+      size: Math.random() > 0.7 ? 2 : 1,
+      twinkleSpeed: 0.015 + Math.random() * 0.03,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Generate city silhouette buildings
+  cityBuildings = [];
+  let bx = 0;
+  while (bx < CONFIG.CANVAS_W * 2 + 100) {
+    const w = 18 + Math.random() * 38;
+    const h = 35 + Math.random() * 110;
+    // Pre-generate window pattern (baked, no per-frame randomness)
+    const windows = [];
+    const winSize = 3;
+    const winGap = 8;
+    for (let wy = 8; wy < h - 8; wy += winGap) {
+      for (let wx = 5; wx < w - 5; wx += winGap) {
+        if (Math.random() > 0.25) {
+          windows.push({
+            ox: wx,
+            oy: wy,
+            color: Math.random() > 0.8 ? '#F1948A' : '#F5B041',
+          });
+        }
+      }
+    }
+    cityBuildings.push({ x: bx, w, h, windows });
+    bx += w + 2 + Math.random() * 8;
+  }
+
+  // Generate cloud shapes
+  cloudShapes = [];
+  for (let i = 0; i < 5; i++) {
+    cloudShapes.push({
+      x: Math.random() * CONFIG.CANVAS_W * 2,
+      y: 40 + Math.random() * 140,
+      w: 40 + Math.random() * 55,
+      h: 12 + Math.random() * 14,
+    });
+  }
+}
+
+function updateBackground(speed) {
+  cloudOffset += speed * CONFIG.BG_LAYER1_SPEED;
+  cityOffset += speed * CONFIG.BG_LAYER2_SPEED;
+  groundOffset += speed;
+}
+
+function drawBackground(ctx, frameCount) {
+  const W = CONFIG.CANVAS_W;
+  const H = CONFIG.CANVAS_H;
+
+  // Layer 0: Sky gradient
+  ctx.fillStyle = skyGradient;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars with twinkle
+  for (const s of stars) {
+    const alpha = 0.25 + 0.75 * Math.abs(Math.sin(s.twinkleOffset + frameCount * s.twinkleSpeed));
+    ctx.fillStyle = `rgba(255,255,240,${alpha.toFixed(2)})`;
+    ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.size, s.size);
+  }
+
+  // Layer 1: Clouds (parallax, pixel-art style)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  for (const c of cloudShapes) {
+    let cx = c.x - cloudOffset;
+    // Wrap around
+    const totalW = W * 2;
+    cx = ((cx % totalW) + totalW) % totalW - c.w;
+    if (cx > W + 10) continue;
+    // Pixel cloud: rows of rects
+    const px = 4;
+    for (let r = 0; r < c.h; r += px) {
+      const inset = (r < px || r >= c.h - px) ? px * 2 : 0;
+      ctx.fillRect(Math.floor(cx + inset), Math.floor(c.y + r), Math.max(0, c.w - inset * 2), px);
+    }
+  }
+
+  // Layer 2: City silhouette (parallax)
+  const baseY = H - 80;
+  const totalCityW = cityBuildings.length > 0 ? cityBuildings[cityBuildings.length - 1].x + cityBuildings[cityBuildings.length - 1].w + 10 : W * 2;
+  
+  for (const b of cityBuildings) {
+    let bx = b.x - cityOffset;
+    // Wrap
+    bx = ((bx % totalCityW) + totalCityW) % totalCityW - 50;
+    if (bx > W + 10 || bx + b.w < -10) continue;
+
+    const drawX = Math.floor(bx);
+    const drawY = baseY - b.h;
+
+    // Building body
+    ctx.fillStyle = '#2D1B4E';
+    ctx.fillRect(drawX, drawY, Math.floor(b.w), b.h);
+
+    // Building edge highlight
+    ctx.fillStyle = '#3D2560';
+    ctx.fillRect(drawX, drawY, 2, b.h);
+
+    // Windows (pre-baked pattern)
+    const winSize = 3;
+    for (const win of b.windows) {
+      ctx.fillStyle = win.color;
+      ctx.fillRect(drawX + win.ox, drawY + win.oy, winSize, winSize);
+    }
+  }
+
+  // Ground strip
+  ctx.fillStyle = '#2D1B4E';
+  ctx.fillRect(0, H - 40, W, 40);
+
+  // Ground top line
+  ctx.fillStyle = '#F1948A';
+  ctx.fillRect(0, H - 40, W, 2);
+
+  // Ground decorative pixel hearts
+  const heartSpacing = 32;
+  const px = 3;
+  ctx.fillStyle = '#3A1C5E';
+  for (let i = 0; i < Math.ceil(W / heartSpacing) + 2; i++) {
+    const hx = Math.floor(((i * heartSpacing - groundOffset % heartSpacing) + W + heartSpacing) % (W + heartSpacing) - heartSpacing / 2);
+    const hy = H - 28;
+    // Tiny pixel heart
+    ctx.fillRect(hx, hy, px, px);
+    ctx.fillRect(hx + px * 2, hy, px, px);
+    ctx.fillRect(hx - px, hy + px, px * 5, px);
+    ctx.fillRect(hx, hy + px * 2, px * 3, px);
+    ctx.fillRect(hx + px, hy + px * 3, px, px);
+  }
+}
+
+function resetBackground() {
+  groundOffset = 0;
+  cloudOffset = 0;
+  cityOffset = 0;
+}
+// mia.js — Mia the cat: physics, pixel-art rendering, animation
+// Pixel art sprite data for Mia (each sprite is a grid of colors)
+// Colors: 0=transparent, 1=dark outline, 2=orange fur, 3=light orange, 4=cream/white, 5=pink, 6=green eyes
+const PALETTE = {
+  0: null,
+  1: '#2D1B0E',   // dark brown outline
+  2: '#E8862A',   // orange fur
+  3: '#F5B041',   // light orange
+  4: '#FFF8F0',   // cream white
+  5: '#F1948A',   // pink (nose, blush)
+  6: '#58D68D',   // green eyes
+  7: '#1A1A1A',   // pupil
+  8: '#D35400',   // darker orange
+};
+
+// 16x16 pixel grid for Mia idle frame 1
+const MIA_IDLE_1 = [
+  [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+  [0,0,0,0,1,2,2,1,1,2,2,1,0,0,0,0],
+  [0,0,0,1,2,3,2,2,2,2,3,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,1,2,4,6,7,2,2,7,6,4,2,1,0,0],
+  [0,0,1,2,4,6,7,2,2,7,6,4,2,1,0,0],
+  [0,0,1,2,2,2,5,5,5,5,2,2,2,1,0,0],
+  [0,0,1,2,2,5,2,4,4,2,5,2,2,1,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,1,3,1,2,2,2,2,2,2,1,3,1,0,0],
+  [0,1,3,3,3,1,2,2,2,2,1,3,3,3,1,0],
+  [0,1,3,3,3,1,2,2,2,2,1,3,3,3,1,0],
+  [0,0,1,1,1,2,2,2,2,2,2,1,1,1,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Mia idle frame 2 (wings slightly down)
+const MIA_IDLE_2 = [
+  [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+  [0,0,0,0,1,2,2,1,1,2,2,1,0,0,0,0],
+  [0,0,0,1,2,3,2,2,2,2,3,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,1,2,4,6,7,2,2,7,6,4,2,1,0,0],
+  [0,0,1,2,4,6,7,2,2,7,6,4,2,1,0,0],
+  [0,0,1,2,2,2,5,5,5,5,2,2,2,1,0,0],
+  [0,0,1,2,2,5,2,4,4,2,5,2,2,1,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,1,3,3,1,2,2,2,2,2,2,1,3,3,1,0],
+  [0,0,1,3,1,2,2,2,2,2,2,1,3,1,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Mia flap frame (wings up)
+const MIA_FLAP = [
+  [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+  [0,0,0,0,1,2,2,1,1,2,2,1,0,0,0,0],
+  [0,0,0,1,2,3,2,2,2,2,3,2,1,0,0,0],
+  [0,1,0,1,2,2,2,2,2,2,2,2,1,0,1,0],
+  [1,3,1,2,4,6,7,2,2,7,6,4,2,1,3,1],
+  [1,3,1,2,4,6,7,2,2,7,6,4,2,1,3,1],
+  [0,1,1,2,2,2,5,5,5,5,2,2,2,1,1,0],
+  [0,0,1,2,2,5,2,4,4,2,5,2,2,1,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Mia hit frame (X eyes, open mouth)
+const MIA_HIT = [
+  [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
+  [0,0,0,0,1,2,2,1,1,2,2,1,0,0,0,0],
+  [0,0,0,1,2,3,2,2,2,2,3,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,1,2,1,4,1,2,2,1,4,1,2,1,0,0],
+  [0,0,1,2,4,1,4,2,2,4,1,4,2,1,0,0],
+  [0,0,1,2,1,4,1,5,5,1,4,1,2,1,0,0],
+  [0,0,1,2,2,2,1,4,4,1,2,2,2,1,0,0],
+  [0,0,0,1,2,2,1,4,4,1,2,2,1,0,0,0],
+  [0,0,0,1,2,2,2,1,1,2,2,2,1,0,0,0],
+  [0,0,1,3,1,2,2,2,2,2,2,1,3,1,0,0],
+  [0,0,1,3,1,2,2,2,2,2,2,1,3,1,0,0],
+  [0,0,0,1,1,2,2,2,2,2,2,1,1,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Menu Mia (bigger, 20x20, sitting)
+const MIA_MENU = [
+  [0,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,0,0],
+  [0,0,0,0,0,1,2,2,1,0,0,1,2,2,1,0,0,0,0,0],
+  [0,0,0,0,1,2,3,2,2,1,1,2,2,3,2,1,0,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,4,6,7,2,2,2,2,7,6,4,2,1,0,0,0],
+  [0,0,0,1,2,4,6,7,2,2,2,2,7,6,4,2,1,0,0,0],
+  [0,0,0,1,2,2,2,2,5,5,5,5,2,2,2,2,1,0,0,0],
+  [0,0,0,1,2,2,5,2,2,4,4,2,2,5,2,2,1,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0],
+  [0,0,0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0,0,0],
+  [0,0,0,0,0,1,2,2,2,2,2,2,2,2,1,0,0,0,0,0],
+  [0,0,0,0,0,1,1,2,2,2,2,2,2,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,1,2,2,1,1,2,2,1,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,0],
+  [0,0,0,1,1,2,2,8,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Sprite cache
+const spriteCanvasCache = {};
+
+function renderSpriteToCache(name, data, pixelSize) {
+  if (spriteCanvasCache[name]) return spriteCanvasCache[name];
+  const rows = data.length;
+  const cols = data[0].length;
+  const c = document.createElement('canvas');
+  c.width = cols * pixelSize;
+  c.height = rows * pixelSize;
+  const cx = c.getContext('2d');
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const colorIdx = data[r][col];
+      if (colorIdx === 0) continue;
+      cx.fillStyle = PALETTE[colorIdx];
+      cx.fillRect(col * pixelSize, r * pixelSize, pixelSize, pixelSize);
+    }
+  }
+  spriteCanvasCache[name] = c;
+  return c;
+}
+
+function preRenderSprites() {
+  renderSpriteToCache('idle1', MIA_IDLE_1, 3);
+  renderSpriteToCache('idle2', MIA_IDLE_2, 3);
+  renderSpriteToCache('flap', MIA_FLAP, 3);
+  renderSpriteToCache('hit', MIA_HIT, 3);
+  renderSpriteToCache('menu', MIA_MENU, 5);
+}
+
+class Mia {
+  constructor() {
+    this.x = CONFIG.MIA_X;
+    this.y = CONFIG.CANVAS_H / 2;
+    this.vy = 0;
+    this.rotation = 0;
+    this.frame = 'idle1';
+    this.flapTimer = 0;
+    this.animTimer = 0;
+    this.alive = true;
+    this.hitTimer = 0;
+  }
+
+  reset() {
+    this.x = CONFIG.MIA_X;
+    this.y = CONFIG.CANVAS_H / 2;
+    this.vy = 0;
+    this.rotation = 0;
+    this.frame = 'idle1';
+    this.flapTimer = 0;
+    this.animTimer = 0;
+    this.alive = true;
+    this.hitTimer = 0;
+  }
+
+  flap() {
+    if (!this.alive) return;
+    this.vy = CONFIG.FLAP_FORCE;
+    this.flapTimer = 10;
+    this.frame = 'flap';
+  }
+
+  hit() {
+    this.alive = false;
+    this.frame = 'hit';
+    this.hitTimer = 20;
+    this.vy = -4;
+  }
+
+  update() {
+    if (this.alive) {
+      this.vy += CONFIG.GRAVITY;
+      if (this.vy > CONFIG.MAX_FALL_SPEED) this.vy = CONFIG.MAX_FALL_SPEED;
+      this.y += this.vy;
+
+      // Rotation
+      if (this.vy < 0) {
+        this.rotation = CONFIG.MIA_ROTATION_UP * (Math.PI / 180);
+      } else {
+        const t = Math.min(this.vy / CONFIG.MAX_FALL_SPEED, 1);
+        this.rotation = t * CONFIG.MIA_ROTATION_DOWN * (Math.PI / 180);
+      }
+
+      // Animation
+      this.flapTimer--;
+      this.animTimer++;
+      if (this.flapTimer > 0) {
+        this.frame = 'flap';
+      } else {
+        this.frame = Math.floor(this.animTimer / 12) % 2 === 0 ? 'idle1' : 'idle2';
+      }
+
+      // Ceiling
+      if (this.y < 0) {
+        this.y = 0;
+        this.vy = 0;
+      }
+    } else {
+      // Falling after hit
+      this.vy += CONFIG.GRAVITY;
+      this.y += this.vy;
+      this.rotation += 0.1;
+      this.hitTimer--;
+    }
+  }
+
+  draw(ctx) {
+    const sprite = spriteCanvasCache[this.frame];
+    if (!sprite) return;
+    ctx.save();
+    ctx.translate(this.x + CONFIG.MIA_W / 2, this.y + CONFIG.MIA_H / 2);
+    ctx.rotate(this.rotation);
+    ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+    ctx.restore();
+  }
+
+  drawMenu(ctx, x, y, bobOffset) {
+    const sprite = spriteCanvasCache['menu'];
+    if (!sprite) return;
+    ctx.drawImage(sprite, x - sprite.width / 2, y - sprite.height / 2 + bobOffset);
+  }
+
+  getCenterX() { return this.x + CONFIG.MIA_W / 2; }
+  getCenterY() { return this.y + CONFIG.MIA_H / 2; }
+  getRadius() { return CONFIG.MIA_HITBOX_RADIUS; }
+}
+// obstacles.js — Obstacle spawner, rendering, collision
+const obstacles = [];
+let spawnTimer = 0;
+
+function resetObstacles() {
+  obstacles.length = 0;
+  spawnTimer = 0;
+}
+
+function getObstacles() {
+  return obstacles;
+}
+
+function getGap(score) {
+  const shrinks = Math.floor(score / 10);
+  return Math.max(CONFIG.OBSTACLE_GAP_MIN, CONFIG.OBSTACLE_GAP - shrinks * CONFIG.OBSTACLE_GAP_SHRINK);
+}
+
+function getSpeed(score) {
+  const increases = Math.floor(score / 10);
+  return Math.min(CONFIG.OBSTACLE_SPEED_MAX, CONFIG.OBSTACLE_SPEED + increases * CONFIG.OBSTACLE_SPEED_INC);
+}
+
+function spawnObstacle(score) {
+  const gap = getGap(score);
+  const minTop = CONFIG.OBSTACLE_MIN_TOP;
+  const maxTop = CONFIG.CANVAS_H - 40 - gap - CONFIG.OBSTACLE_MIN_TOP; // 40 = ground height
+  const topH = minTop + Math.random() * (maxTop - minTop);
+  
+  obstacles.push({
+    x: CONFIG.CANVAS_W + 10,
+    topH: topH,
+    bottomY: topH + gap,
+    passed: false,
+    speed: getSpeed(score),
+    gap: gap,
+  });
+}
+
+function updateObstacles(score) {
+  const speed = getSpeed(score);
+  
+  // Spawn logic
+  spawnTimer += speed;
+  if (spawnTimer >= CONFIG.OBSTACLE_SPACING || obstacles.length === 0) {
+    spawnObstacle(score);
+    spawnTimer = 0;
+  }
+
+  // Move and cull
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    obstacles[i].x -= speed;
+    if (obstacles[i].x < -CONFIG.OBSTACLE_W - 10) {
+      obstacles.splice(i, 1);
+    }
+  }
+
+  return speed; // return current speed for background sync
+}
+
+function checkCollision(mia) {
+  const cx = mia.getCenterX();
+  const cy = mia.getCenterY();
+  const r = mia.getRadius();
+
+  // Ground collision
+  if (cy + r >= CONFIG.CANVAS_H - 40) return true;
+
+  for (const obs of obstacles) {
+    // Check if Mia's circle overlaps the obstacle rectangles
+    // Top obstacle: rect(obs.x, 0, OBSTACLE_W, obs.topH)
+    // Bottom obstacle: rect(obs.x, obs.bottomY, OBSTACLE_W, CANVAS_H - obs.bottomY)
+    if (circleRectCollision(cx, cy, r, obs.x, 0, CONFIG.OBSTACLE_W, obs.topH)) return true;
+    if (circleRectCollision(cx, cy, r, obs.x, obs.bottomY, CONFIG.OBSTACLE_W, CONFIG.CANVAS_H - obs.bottomY)) return true;
+  }
+  return false;
+}
+
+function circleRectCollision(cx, cy, r, rx, ry, rw, rh) {
+  const closestX = Math.max(rx, Math.min(cx, rx + rw));
+  const closestY = Math.max(ry, Math.min(cy, ry + rh));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return (dx * dx + dy * dy) < (r * r);
+}
+
+function checkPassed(mia) {
+  let scored = 0;
+  for (const obs of obstacles) {
+    if (!obs.passed && obs.x + CONFIG.OBSTACLE_W < mia.getCenterX()) {
+      obs.passed = true;
+      scored++;
+    }
+  }
+  return scored;
+}
+
+// Draw obstacles as romantic lantern arches (pixel art style)
+function drawObstacles(ctx) {
+  const W = CONFIG.OBSTACLE_W;
+  const px = 4; // pixel size for blocky look
+
+  for (const obs of obstacles) {
+    const x = Math.floor(obs.x);
+
+    // --- Top obstacle: Hanging lantern chain ---
+    // Column
+    ctx.fillStyle = '#4A235A';
+    ctx.fillRect(x, 0, W, obs.topH);
+    
+    // Border details (pixel art edges)
+    ctx.fillStyle = '#6C3483';
+    ctx.fillRect(x, 0, px, obs.topH);
+    ctx.fillRect(x + W - px, 0, px, obs.topH);
+    
+    // Bottom cap (ornamental)
+    ctx.fillStyle = '#F5B041';
+    ctx.fillRect(x - 4, obs.topH - px * 2, W + 8, px * 2);
+    ctx.fillRect(x, obs.topH - px * 3, W, px);
+    
+    // Hanging lantern
+    const lanternX = x + W / 2;
+    const lanternY = obs.topH - px;
+    // Glow
+    ctx.fillStyle = 'rgba(245, 176, 65, 0.15)';
+    ctx.beginPath();
+    ctx.arc(lanternX, lanternY + 4, 18, 0, Math.PI * 2);
+    ctx.fill();
+    // Lantern body
+    ctx.fillStyle = '#F5B041';
+    ctx.fillRect(lanternX - 4, lanternY - 2, 8, px);
+    ctx.fillStyle = '#F39C12';
+    ctx.fillRect(lanternX - 6, lanternY + 2, 12, 8);
+    ctx.fillStyle = '#FFF8F0';
+    ctx.fillRect(lanternX - 3, lanternY + 4, 6, 4);
+
+    // --- Bottom obstacle: Column with ivy/hearts ---
+    const botTop = obs.bottomY;
+    const botH = CONFIG.CANVAS_H - botTop;
+    
+    // Column
+    ctx.fillStyle = '#4A235A';
+    ctx.fillRect(x, botTop, W, botH);
+    
+    // Border
+    ctx.fillStyle = '#6C3483';
+    ctx.fillRect(x, botTop, px, botH);
+    ctx.fillRect(x + W - px, botTop, px, botH);
+    
+    // Top cap
+    ctx.fillStyle = '#F5B041';
+    ctx.fillRect(x - 4, botTop, W + 8, px * 2);
+    ctx.fillRect(x, botTop + px * 2, W, px);
+
+    // Small pixel hearts on column
+    ctx.fillStyle = '#F1948A';
+    drawObstaclePixelHeart(ctx, x + 8, botTop + 20, 2);
+    drawObstaclePixelHeart(ctx, x + W - 16, botTop + 40, 2);
+    drawObstaclePixelHeart(ctx, x + 12, botTop + 60, 2);
+    
+    // Ivy dots
+    ctx.fillStyle = '#27AE60';
+    for (let iy = botTop + 15; iy < Math.min(botTop + botH, botTop + 100); iy += 12) {
+      ctx.fillRect(x + 2, iy, px, px);
+      ctx.fillRect(x + W - px - 2, iy + 6, px, px);
+    }
+  }
+}
+
+function drawObstaclePixelHeart(ctx, x, y, s) {
+  ctx.fillRect(x, y, s, s);
+  ctx.fillRect(x + s * 2, y, s, s);
+  ctx.fillRect(x - s, y + s, s * 5, s);
+  ctx.fillRect(x, y + s * 2, s * 3, s);
+  ctx.fillRect(x + s, y + s * 3, s, s);
+}
+// input.js — Unified input handler
+let lastInputTime = 0;
+let actionCallback = null;
+let tapX = 0, tapY = 0;
+let hasTap = false;
+let scale = 1;
+let canvasRect = null;
+
+function initInput(canvas, callback) {
+  actionCallback = callback;
+
+  function updateRect() {
+    canvasRect = canvas.getBoundingClientRect();
+    scale = CONFIG.CANVAS_W / canvasRect.width;
+  }
+  updateRect();
+  window.addEventListener('resize', updateRect);
+
+  function getLogicalPos(clientX, clientY) {
+    return {
+      x: (clientX - canvasRect.left) * scale,
+      y: (clientY - canvasRect.top) * scale,
+    };
+  }
+
+  function handleAction(clientX, clientY) {
+    const now = Date.now();
+    if (now - lastInputTime < CONFIG.INPUT_DEBOUNCE_MS) return;
+    lastInputTime = now;
+    const pos = getLogicalPos(clientX, clientY);
+    tapX = pos.x;
+    tapY = pos.y;
+    hasTap = true;
+    if (actionCallback) actionCallback(pos.x, pos.y);
+  }
+
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    handleAction(touch.clientX, touch.clientY);
+  }, { passive: false });
+
+  canvas.addEventListener('click', (e) => {
+    handleAction(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      handleAction(CONFIG.CANVAS_W / 2, CONFIG.CANVAS_H / 2);
+    }
+  });
+}
+
+function getTap() {
+  if (hasTap) {
+    hasTap = false;
+    return { x: tapX, y: tapY };
+  }
+  return null;
+}
+// ui.js — UI rendering on canvas
+// Button hit areas (logical coords) — set during draw, checked during input
+const buttons = {
+  start: null,
+  retry: null,
+  home: null,
+  resume: null,
+  langToggle: null,
+  soundToggle: null,
+  pauseBtn: null,
+};
+
+function clearButtons() {
+  for (const k in buttons) buttons[k] = null;
+}
+
+function setButton(name, x, y, w, h) {
+  buttons[name] = { x, y, w, h };
+}
+
+function hitTest(name, tx, ty) {
+  const b = buttons[name];
+  if (!b) return false;
+  return tx >= b.x && tx <= b.x + b.w && ty >= b.y && ty <= b.y + b.h;
+}
+
+// Draw rounded rect
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawButton(ctx, text, x, y, w, h, color = CONFIG.COLOR_ROSE) {
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  roundRect(ctx, x + 2, y + 2, w, h, 8);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = color;
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fill();
+  // Border
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.stroke();
+  // Text
+  ctx.fillStyle = CONFIG.COLOR_WHITE;
+  ctx.font = 'bold 16px Nunito, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+}
+
+function drawSmallButton(ctx, text, x, y, w, h, color = 'rgba(255,255,255,0.15)') {
+  ctx.fillStyle = color;
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fill();
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.font = '12px Nunito, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+}
+
+// Pixel art heart for decorative purposes
+function drawPixelHeart(ctx, x, y, s, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, s, s);
+  ctx.fillRect(x + s * 2, y, s, s);
+  ctx.fillRect(x - s, y + s, s * 5, s);
+  ctx.fillRect(x, y + s * 2, s * 3, s);
+  ctx.fillRect(x + s, y + s * 3, s, s);
+}
+
+// ===================== SCREENS =====================
+
+function drawMenuScreen(ctx, mia, frameCount, bestScore) {
+  clearButtons();
+  const W = CONFIG.CANVAS_W;
+  const H = CONFIG.CANVAS_H;
+
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(58, 28, 94, 0.3)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title shadow
+  ctx.font = 'bold 42px Pacifico, cursive';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillText(t('title'), W / 2 + 2, 100 + 2);
+  // Title
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.fillText(t('title'), W / 2, 100);
+
+  // Subtitle hearts
+  drawPixelHeart(ctx, W / 2 - 60, 130, 3, CONFIG.COLOR_PINK);
+  drawPixelHeart(ctx, W / 2 + 45, 130, 3, CONFIG.COLOR_PINK);
+
+  // Mia menu sprite (bobbing)
+  const bobOffset = Math.sin(frameCount * 0.04) * 5;
+  mia.drawMenu(ctx, W / 2, 250, bobOffset);
+
+  // Start button
+  const btnW = 160, btnH = 48;
+  const btnX = W / 2 - btnW / 2, btnY = 360;
+  drawButton(ctx, t('btn_start'), btnX, btnY, btnW, btnH);
+  setButton('start', btnX, btnY, btnW, btnH);
+
+  // Tap hint (pulsing)
+  ctx.font = '14px Nunito, sans-serif';
+  ctx.textAlign = 'center';
+  const alpha = 0.4 + 0.6 * Math.abs(Math.sin(frameCount * 0.05));
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = CONFIG.COLOR_LAVENDER;
+  ctx.fillText(t('tip_control'), W / 2, 430);
+  ctx.globalAlpha = 1;
+
+  // Best score
+  if (bestScore > 0) {
+    ctx.fillStyle = CONFIG.COLOR_AMBER;
+    ctx.font = 'bold 16px Nunito, sans-serif';
+    ctx.fillText(`${t('best_label')}: ${bestScore}`, W / 2, 470);
+  }
+
+  // Language toggle (top right)
+  const lX = W - 55, lY = 10, lW = 45, lH = 28;
+  drawSmallButton(ctx, getLang().toUpperCase(), lX, lY, lW, lH);
+  setButton('langToggle', lX, lY, lW, lH);
+
+  // Sound toggle (top left)
+  const sX = 10, sY = 10, sW = 28, sH = 28;
+  drawSmallButton(ctx, isSoundEnabled() ? '♪' : '✕', sX, sY, sW, sH);
+  setButton('soundToggle', sX, sY, sW, sH);
+}
+
+function drawHUD(ctx, score, frameCount) {
+  clearButtons();
+  const W = CONFIG.CANVAS_W;
+
+  // Score shadow
+  ctx.font = 'bold 36px Nunito, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillText(String(score), W / 2 + 2, 22);
+  // Score
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.fillText(String(score), W / 2, 20);
+
+  // Pause button (top right)
+  const pX = W - 42, pY = 10, pW = 32, pH = 32;
+  drawSmallButton(ctx, '⏸', pX, pY, pW, pH);
+  setButton('pauseBtn', pX, pY, pW, pH);
+}
+
+function drawPauseScreen(ctx) {
+  clearButtons();
+  const W = CONFIG.CANVAS_W;
+  const H = CONFIG.CANVAS_H;
+
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.font = 'bold 32px Pacifico, cursive';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(t('btn_pause'), W / 2, H / 2 - 60);
+
+  // Resume button
+  const btnW = 160, btnH = 44;
+  drawButton(ctx, t('btn_resume'), W / 2 - btnW / 2, H / 2 - 10, btnW, btnH);
+  setButton('resume', W / 2 - btnW / 2, H / 2 - 10, btnW, btnH);
+
+  // Home button
+  drawButton(ctx, t('btn_home'), W / 2 - btnW / 2, H / 2 + 50, btnW, btnH, '#6C3483');
+  setButton('home', W / 2 - btnW / 2, H / 2 + 50, btnW, btnH);
+}
+
+function drawGameOverScreen(ctx, score, bestScore, isNewRecord, frameCount, messageIndex) {
+  clearButtons();
+  const W = CONFIG.CANVAS_W;
+  const H = CONFIG.CANVAS_H;
+
+  // Overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Game over title
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.font = 'bold 30px Pacifico, cursive';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(t('game_over'), W / 2, 140);
+
+  // Score panel background
+  ctx.fillStyle = 'rgba(58, 28, 94, 0.7)';
+  roundRect(ctx, W / 2 - 100, 170, 200, 120, 12);
+  ctx.fill();
+
+  // Score
+  ctx.fillStyle = CONFIG.COLOR_LAVENDER;
+  ctx.font = '14px Nunito, sans-serif';
+  ctx.fillText(t('score_label'), W / 2, 200);
+  ctx.fillStyle = CONFIG.COLOR_CREAM;
+  ctx.font = 'bold 36px Nunito, sans-serif';
+  ctx.fillText(String(score), W / 2, 235);
+
+  // Best
+  ctx.fillStyle = CONFIG.COLOR_LAVENDER;
+  ctx.font = '14px Nunito, sans-serif';
+  ctx.fillText(t('best_label'), W / 2, 265);
+  ctx.fillStyle = CONFIG.COLOR_AMBER;
+  ctx.font = 'bold 20px Nunito, sans-serif';
+  ctx.fillText(String(bestScore), W / 2, 285);
+
+  // New record (pulsing)
+  if (isNewRecord) {
+    const pulse = 0.8 + 0.2 * Math.sin(frameCount * 0.1);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = CONFIG.COLOR_AMBER;
+    ctx.font = 'bold 20px Nunito, sans-serif';
+    ctx.fillText(t('new_record'), W / 2, 320);
+    ctx.globalAlpha = 1;
+  }
+
+  // Nastya message — uses fixed index so it doesn't change every frame
+  const messages = t('msg_nastya');
+  const idx = (typeof messageIndex === 'number') ? messageIndex % messages.length : 0;
+  const msg = messages[idx];
+  ctx.fillStyle = CONFIG.COLOR_PINK;
+  ctx.font = '15px Nunito, sans-serif';
+  ctx.fillText(msg, W / 2, 355);
+
+  // Decorative hearts
+  drawPixelHeart(ctx, W / 2 - 80, 375, 2, CONFIG.COLOR_PINK);
+  drawPixelHeart(ctx, W / 2 + 68, 375, 2, CONFIG.COLOR_PINK);
+
+  // Retry button
+  const btnW = 160, btnH = 44;
+  drawButton(ctx, t('btn_retry'), W / 2 - btnW / 2, 400, btnW, btnH);
+  setButton('retry', W / 2 - btnW / 2, 400, btnW, btnH);
+
+  // Home button
+  drawButton(ctx, t('btn_home'), W / 2 - btnW / 2, 460, btnW, btnH, '#6C3483');
+  setButton('home', W / 2 - btnW / 2, 460, btnW, btnH);
+}
+
+function drawMilestoneToast(ctx, text, timer) {
+  if (timer <= 0) return;
+  const W = CONFIG.CANVAS_W;
+  const alpha = Math.min(1, timer / 20);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = CONFIG.COLOR_AMBER;
+  ctx.font = 'bold 18px Nunito, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, W / 2, 80);
+  ctx.globalAlpha = 1;
+}
+// game.js — Core game loop and scene management
+// States
+const STATE = { MENU: 0, PLAYING: 1, PAUSED: 2, GAME_OVER: 3 };
+
+let canvas, ctx;
+let state = STATE.MENU;
+let mia;
+let score = 0;
+let bestScore = 0;
+let isNewRecord = false;
+let frameCount = 0;
+let milestoneText = '';
+let milestoneTimer = 0;
+let shakeTimer = 0;
+let shakeX = 0, shakeY = 0;
+let gameOverMessageIndex = 0;
+let lastMilestone = 0;
+
+function initGame(canvasEl) {
+  canvas = canvasEl;
+  ctx = canvas.getContext('2d');
+  canvas.width = CONFIG.CANVAS_W;
+  canvas.height = CONFIG.CANVAS_H;
+
+  // Load prefs
+  const savedLang = loadLang();
+  setLang(savedLang);
+  bestScore = loadBest();
+  const savedSound = loadSound();
+  setSoundEnabled(savedSound);
+
+  // Pre-render pixel art sprites
+  preRenderSprites();
+
+  // Init subsystems
+  mia = new Mia();
+  initBackground(ctx);
+  initAudio();
+
+  // Input
+  initInput(canvas, handleInput);
+
+  // Start loop
+  requestAnimationFrame(loop);
+}
+
+function handleInput(x, y) {
+  switch (state) {
+    case STATE.MENU:
+      if (hitTest('langToggle', x, y)) {
+        const newLang = toggleLang();
+        saveLang(newLang);
+        return;
+      }
+      if (hitTest('soundToggle', x, y)) {
+        const newSound = !isSoundEnabled();
+        setSoundEnabled(newSound);
+        saveSound(newSound);
+        if (newSound) startBGM();
+        return;
+      }
+      // Any tap starts the game (besides toggle buttons)
+      startGame();
+      break;
+
+    case STATE.PLAYING:
+      if (hitTest('pauseBtn', x, y)) {
+        state = STATE.PAUSED;
+        stopBGM();
+        return;
+      }
+      mia.flap();
+      playFlap();
+      break;
+
+    case STATE.PAUSED:
+      if (hitTest('resume', x, y)) {
+        state = STATE.PLAYING;
+        startBGM();
+        return;
+      }
+      if (hitTest('home', x, y)) {
+        goToMenu();
+        return;
+      }
+      break;
+
+    case STATE.GAME_OVER:
+      if (hitTest('retry', x, y)) {
+        startGame();
+        return;
+      }
+      if (hitTest('home', x, y)) {
+        goToMenu();
+        return;
+      }
+      break;
+  }
+}
+
+function startGame() {
+  state = STATE.PLAYING;
+  score = 0;
+  isNewRecord = false;
+  lastMilestone = 0;
+  milestoneTimer = 0;
+  shakeTimer = 0;
+  mia.reset();
+  resetObstacles();
+  resetBackground();
+  clearParticles();
+  startBGM();
+}
+
+function goToMenu() {
+  state = STATE.MENU;
+  mia.reset();
+  resetObstacles();
+  resetBackground();
+  clearParticles();
+  stopBGM();
+}
+
+function gameOver() {
+  state = STATE.GAME_OVER;
+  mia.hit();
+  playHit();
+  stopBGM();
+  shakeTimer = 12;
+  // Pick a random message index ONCE at game over
+  gameOverMessageIndex = Math.floor(Math.random() * 5);
+
+  if (score > bestScore) {
+    bestScore = score;
+    isNewRecord = true;
+    saveBest(bestScore);
+    playRecord();
+  }
+}
+
+function checkMilestones() {
+  const milestones = [
+    { pts: CONFIG.MILESTONE_50, key: 'milestone_50' },
+    { pts: CONFIG.MILESTONE_25, key: 'milestone_25' },
+    { pts: CONFIG.MILESTONE_10, key: 'milestone_10' },
+    { pts: CONFIG.MILESTONE_5, key: 'milestone_5' },
+  ];
+  for (const m of milestones) {
+    if (score >= m.pts && lastMilestone < m.pts) {
+      lastMilestone = m.pts;
+      milestoneText = t(m.key);
+      milestoneTimer = 80;
+      spawnHearts(mia.getCenterX(), mia.getCenterY(), 8);
+      playMilestone();
+      break;
+    }
+  }
+}
+
+function update() {
+  frameCount++;
+
+  if (state === STATE.PLAYING) {
+    mia.update();
+    const speed = updateObstacles(score);
+    updateBackground(speed);
+    updateParticles();
+
+    // Check scoring
+    const scored = checkPassed(mia);
+    if (scored > 0) {
+      score += scored;
+      playScore();
+      checkMilestones();
+    }
+
+    // Check collision
+    if (checkCollision(mia)) {
+      gameOver();
+    }
+
+    // Milestone timer
+    if (milestoneTimer > 0) milestoneTimer--;
+  }
+
+  if (state === STATE.GAME_OVER) {
+    mia.update();
+    updateParticles();
+    if (milestoneTimer > 0) milestoneTimer--;
+  }
+
+  // Screen shake
+  if (shakeTimer > 0) {
+    shakeTimer--;
+    shakeX = (Math.random() - 0.5) * 6;
+    shakeY = (Math.random() - 0.5) * 6;
+  } else {
+    shakeX = 0;
+    shakeY = 0;
+  }
+}
+
+function render() {
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // Background always draws
+  drawBackground(ctx, frameCount);
+
+  if (state === STATE.MENU) {
+    drawMenuScreen(ctx, mia, frameCount, bestScore);
+    drawParticles(ctx);
+  }
+
+  if (state === STATE.PLAYING) {
+    drawObstacles(ctx);
+    mia.draw(ctx);
+    drawParticles(ctx);
+    drawHUD(ctx, score, frameCount);
+    drawMilestoneToast(ctx, milestoneText, milestoneTimer);
+  }
+
+  if (state === STATE.PAUSED) {
+    drawObstacles(ctx);
+    mia.draw(ctx);
+    drawHUD(ctx, score, frameCount);
+    drawPauseScreen(ctx);
+  }
+
+  if (state === STATE.GAME_OVER) {
+    drawObstacles(ctx);
+    mia.draw(ctx);
+    drawParticles(ctx);
+    drawGameOverScreen(ctx, score, bestScore, isNewRecord, frameCount, gameOverMessageIndex);
+  }
+
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+// main.js — Entry point
+window.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('gameCanvas');
+  initGame(canvas);
+  handleResize(canvas);
+  window.addEventListener('resize', () => handleResize(canvas));
+});
+
+function handleResize(canvas) {
+  const W = 400, H = 600;
+  const windowW = window.innerWidth;
+  const windowH = window.innerHeight;
+  const scale = Math.min(windowW / W, windowH / H);
+  canvas.style.width = Math.floor(W * scale) + 'px';
+  canvas.style.height = Math.floor(H * scale) + 'px';
+}
+  </script>
+</body>
+</html>
